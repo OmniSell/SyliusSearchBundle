@@ -1,5 +1,5 @@
 {
-    "name": "sylius/search-bundle",
+    "name": "omnisell/sylius-search-bundle",
     "type": "symfony-bundle",
     "description": "Product catalog for your Symfony2 applications.",
     "keywords": ["shop", "ecommerce", "products", "product", "search"],
@@ -39,7 +39,7 @@
         "bin-dir": "bin"
     },
     "autoload": {
-        "psr-4": { "Sylius\\Bundle\\SearchBundle\\": "" }
+        "psr-4": { "Sylius\\Bundle\\SearchBundle\\": "src/" }
     },
     "autoload-dev": {
         "psr-4": { "Sylius\\Bundle\\SearchBundle\\spec\\": "spec/" }
