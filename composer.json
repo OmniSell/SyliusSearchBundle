@@ -34,7 +34,7 @@
         "sylius/taxonomy": "^1.0"
     },
     "suggest": {
-        "friendsofsymfony/elastica-bundle": "~3.0.2",
+        "friendsofsymfony/elastica-bundle": "~3.0.2"
     },
     "config": {
         "bin-dir": "bin"
