@@ -11,6 +11,7 @@
 
 namespace Sylius\Bundle\SearchBundle\Query;
 
+use Sylius\Component\Core\Model\TaxonInterface;
 use Symfony\Component\HttpFoundation\Request;
 
 /**
@@ -39,15 +40,21 @@ class SearchStringQuery extends Query
     protected $remoteAddress;
 
     /**
+     * @var TaxonInterface|null
+     */
+    private $taxon;
+
+    /**
      * @param Request $request
      * @param bool    $dropDownFilterEnabled
      */
-    public function __construct(Request $request, $dropDownFilterEnabled = false)
+    public function __construct(Request $request, $dropDownFilterEnabled = false, TaxonInterface $taxon = null)
     {
         $requestBag = $request->isMethod('GET') ? $request->query : $request->request;
 
-        $this->appliedFilters = $requestBag->get('filters', []);
-        $this->searchTerm = str_replace('/', '\\/', $requestBag->get('q'));
+        $this->taxon = $taxon;
+        $this->appliedFilters = $this->trimFilters($requestBag->get('criteria', []));
+        $this->searchTerm = isset($this->appliedFilters['search']) ? $this->appliedFilters['search'] : null;
         $this->searchParam = $requestBag->get('search_param');
         $this->dropdownFilterEnabled = (bool) $dropDownFilterEnabled;
         $this->remoteAddress = $request->getClientIp();
@@ -99,5 +106,33 @@ class SearchStringQuery extends Query
     public function getRemoteAddress()
     {
         return $this->remoteAddress;
+    }
+
+    /**
+     * @return null|TaxonInterface
+     */
+    public function getTaxon()
+    {
+        return $this->taxon;
+    }
+
+    /**
+     * @param array $filters
+     *
+     * @return array
+     */
+    protected function trimFilters(array $filters)
+    {
+        foreach ($filters as &$appliedFilter) {
+            if (!is_array($appliedFilter)) {
+                $appliedFilter = trim($appliedFilter);
+                continue;
+            }
+            foreach ($appliedFilter as &$value) {
+                $value = trim($value);
+            }
+        }
+
+        return $filters;
     }
 }

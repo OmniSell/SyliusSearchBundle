@@ -14,8 +14,12 @@ namespace Sylius\Bundle\SearchBundle\Indexer;
 use Doctrine\DBAL\Schema\Index;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\NoResultException;
-use FOS\ElasticaBundle\Transformer\ModelToElasticaAutoTransformer;
 use Sylius\Bundle\SearchBundle\Model\SearchIndex;
+use Sylius\Bundle\SearchBundle\Model\SearchTagAwareInterface;
+use Sylius\Component\Core\Model\ProductInterface;
+use Sylius\Component\Resource\Model\ToggleableInterface;
+use Symfony\Component\PropertyAccess\PropertyAccessorInterface;
+use Traversable;
 
 /**
  * Orm Indexer
@@ -24,6 +28,8 @@ use Sylius\Bundle\SearchBundle\Model\SearchIndex;
  */
 class OrmIndexer implements IndexerInterface
 {
+    const TAG_SEPARATOR = '|';
+
     /**
      * @var array
      */
@@ -35,25 +41,25 @@ class OrmIndexer implements IndexerInterface
     private $em;
 
     /**
-     * @var ModelToElasticaAutoTransformer
-     */
-    private $transformer;
-
-    /**
      * @var string
      */
     private $output;
 
+    /**
+     * @var PropertyAccessorInterface
+     */
+    private $accessor;
+
     const SPACER = ' ';
 
     /**
-     * @param array                          $config
-     * @param ModelToElasticaAutoTransformer $transformer
+     * @param array                     $config
+     * @param PropertyAccessorInterface $accessor
      */
-    public function __construct(array $config, ModelToElasticaAutoTransformer $transformer)
+    public function __construct(array $config, PropertyAccessorInterface $accessor)
     {
         $this->config = $config;
-        $this->transformer = $transformer;
+        $this->accessor = $accessor;
     }
 
     /**
@@ -77,7 +83,7 @@ class OrmIndexer implements IndexerInterface
      */
     private function addToOutput($message)
     {
-        $this->output .= $message.PHP_EOL;
+        $this->output .= $message . PHP_EOL;
     }
 
     /**
@@ -122,7 +128,7 @@ class OrmIndexer implements IndexerInterface
     {
         $fieldNames = array_keys($fields);
         foreach ($fieldNames as &$value) {
-            $value = 'u.'.$value;
+            $value = 'u.' . $value;
         }
 
         $this->addToOutput(sprintf('Populating index table with "%s" data', $entity));
@@ -130,14 +136,14 @@ class OrmIndexer implements IndexerInterface
         $queryBuilder = $this->em->createQueryBuilder();
         $queryBuilder
             ->select('u')
-            ->from($entity, 'u')
-        ;
+            ->from($entity, 'u');
 
-        foreach ($queryBuilder->getQuery()->getResult() as $element) {
+        $result = $queryBuilder->getQuery()->getResult();
+        foreach ($result as $element) {
             $this->createIndexForEntity($entity, $fields, $element);
         }
 
-        $this->addToOutput('Index created successfully');
+        $this->addToOutput(sprintf('Index created successfully (%d items indexed)', count($result)));
     }
 
     /**
@@ -180,8 +186,7 @@ class OrmIndexer implements IndexerInterface
             ->where('u.itemId = :item_id')
             ->andWhere('u.entity = :entity_namespace')
             ->setParameter(':item_id', $entity->getId())
-            ->setParameter(':entity_namespace', get_class($entity))
-        ;
+            ->setParameter(':entity_namespace', get_class($entity));
 
         try {
             $searchIndex = $queryBuilder->getQuery()->getSingleResult();
@@ -207,24 +212,24 @@ class OrmIndexer implements IndexerInterface
             ->where('u.itemId = :item_id')
             ->andWhere('u.entity = :entity_namespace')
             ->setParameter(':item_id', $entity['id'])
-            ->setParameter(':entity_namespace', get_class($entity['entity']))
-        ;
+            ->setParameter(':entity_namespace', get_class($entity['entity']));
 
         $queryBuilder->getQuery()->getResult();
     }
 
     /**
-     * @param $element
-     * @param $searchIndex
+     * @param object      $element
+     * @param SearchIndex $searchIndex
      */
     public function getTagsForElementAndSave($element, $searchIndex)
     {
-        /*
-         * We bound orm with ElasticSearch at this point. I could separate the logic but this
-         * means that we will have logic duplication. Maybe this could be refactored in the future.
-         */
-        $elasticaDocument = $this->transformer->transform($element, array_flip(array_keys($this->config['filters']['facets'])));
-        $searchIndex->setTags(serialize($elasticaDocument->getData()));
+        $data = $this->extractTags($element, $this->config['filters']['facets']);
+
+        $searchIndex->setTags(serialize($data));
+        if ($element instanceof SearchTagAwareInterface) {
+            $element->setTagIndex($this->buildTagIndex($data));
+            $this->em->persist($element);
+        }
 
         $this->em->persist($searchIndex);
         $this->em->flush();
@@ -241,10 +246,10 @@ class OrmIndexer implements IndexerInterface
         // TODO maybe I can use the property accessor here
         $content = '';
         foreach (array_keys(array_slice($fields, 1)) as $field) {
-            $func = 'get'.ucfirst($field);
+            $func = 'get' . ucfirst($field);
 
             if (method_exists($element, $func)) {
-                $content .= $element->$func().self::SPACER;
+                $content .= $element->$func() . self::SPACER;
             }
         }
 
@@ -288,5 +293,88 @@ class OrmIndexer implements IndexerInterface
         }
 
         return $node;
+    }
+
+    /**
+     * @param array $data
+     *
+     * @return string
+     */
+    private function buildTagIndex($data)
+    {
+        $result = '';
+        foreach ($data as $key => $values) {
+            $values = is_array($values) ? $values : [$values];
+            foreach ($values as $value) {
+                $result .= sprintf('%s%s:%s%s', self::TAG_SEPARATOR, $key, (string)$value, self::TAG_SEPARATOR);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param object   $element
+     * @param string[] $tags
+     *
+     * @return array
+     */
+    private function extractTags($element, $tags)
+    {
+        $result = [];
+        foreach ($tags as $tag => $config) {
+            if (!empty($config['taxon_root'])) {
+                $taxons = $this->extractTaxons($element, $config['taxon_root'], $config['taxon_leaf_only']);
+                if (count($taxons)) {
+                    $result[$tag] = $taxons;
+                }
+
+                continue;
+            }
+
+            $values = $this->accessor->getValue($element, $tag);
+            if (is_array($values) || $values instanceof Traversable) {
+                foreach ($values as $value) {
+                    $result[$tag][] = trim($value);
+                }
+            } elseif (null !== $values) {
+                $result[$tag] = trim($values);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param object $element
+     * @param string $root
+     * @param bool   $leafOnly
+     *
+     * @return array
+     */
+    private function extractTaxons($element, $root, $leafOnly)
+    {
+        if (!$element instanceof ProductInterface) {
+            return [];
+        }
+
+        $taxons = [];
+        foreach ($element->getProductTaxons() as $productTaxon) {
+            $taxon = $productTaxon->getTaxon();
+            if ($taxon->isRoot()
+                || $root !== $taxon->getRoot()->getCode()
+                || ($leafOnly && $taxon->getChildren()->count())
+            ) {
+                continue;
+            }
+
+            if ($taxon instanceof ToggleableInterface && !$taxon->isEnabled()) {
+                continue;
+            }
+
+            $taxons[] = trim($taxon->getName());
+        }
+
+        return $taxons;
     }
 }

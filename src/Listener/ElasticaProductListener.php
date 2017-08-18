@@ -14,9 +14,9 @@ namespace Sylius\Bundle\SearchBundle\Listener;
 use Doctrine\Common\EventSubscriber;
 use Doctrine\ORM\Event\LifecycleEventArgs;
 use FOS\ElasticaBundle\Persister\ObjectPersister;
+use Sylius\Component\Core\Model\ProductTranslation;
 use Sylius\Component\Product\Model\AttributeValueInterface;
 use Sylius\Component\Product\Model\ProductInterface;
-use Sylius\Component\Core\Model\ProductTranslation;
 use Sylius\Component\Variation\Model\VariantInterface;
 
 /**

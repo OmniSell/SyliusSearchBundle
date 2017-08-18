@@ -24,8 +24,6 @@
         <parameter key="sylius_search.orm.finder.class">Sylius\Bundle\SearchBundle\Finder\OrmFinder</parameter>
         <parameter key="sylius_search.elasticsearch.finder.class">Sylius\Bundle\SearchBundle\Finder\ElasticsearchFinder</parameter>
 
-        <parameter key="fos_elastica.model_to_elastica_transformer.class">FOS\ElasticaBundle\Transformer\ModelToElasticaAutoTransformer</parameter>
-
         <parameter key="sylius.search.orm.indexer.class">Sylius\Bundle\SearchBundle\Indexer\OrmIndexer</parameter>
         <parameter key="sylius.search.elasticsearch.indexer.class">Sylius\Bundle\SearchBundle\Indexer\ElasticsearchIndexer</parameter>
 
@@ -35,6 +33,13 @@
         <parameter key="sylius.search.product.property_accessor.class">Sylius\Bundle\SearchBundle\Accessor\PropertyAccessor</parameter>
 
         <parameter key="sylius.search.request_handler">Sylius\Bundle\SearchBundle\Request\RequestHandler</parameter>
+
+        <parameter key="sylius_search.grid.search_filter.class">Sylius\Bundle\SearchBundle\Grid\SearchFilter</parameter>
+        <parameter key="sylius_search.grid.search_filter_type.class">Sylius\Bundle\SearchBundle\Grid\SearchFilterType</parameter>
+
+        <parameter key="sylius_search.search_query_builder.factory.class">Sylius\Bundle\SearchBundle\QueryBuilderFactory\QueryBuilderFactory</parameter>
+        <parameter key="sylius_search.search_query_builder.factory.searchMethod">createQueryBuilderSearchGrid</parameter>
+        <parameter key="sylius_search.search_query_builder.factory.taxonMethod">createQueryBuilderProductGrid</parameter>
     </parameters>
 
     <services>
@@ -58,6 +63,7 @@
             <argument type="service" id="doctrine.orm.entity_manager" />
             <argument type="service" id="sylius_search.query.logger" on-invalid="ignore" />
             <argument type="service" id="sylius.context.channel" />
+            <argument type="service" id="sylius_search.search_query_builder.factory" />
         </service>
 
         <service id="sylius_search.elasticsearch.finder" class="%sylius_search.elasticsearch.finder.class%">
@@ -69,12 +75,6 @@
             <argument type="service" id="sylius.context.channel" />
         </service>
 
-        <service id="sylius.search.transformers.model.product" class="%fos_elastica.model_to_elastica_transformer.class%">
-            <call method="setPropertyAccessor">
-                <argument type="service" id="sylius.search.product.property_accessor" />
-            </call>
-        </service>
-
         <service id="sylius.search.orm.listener" class="Sylius\Bundle\SearchBundle\Listener\OrmListener">
             <argument type="service" id="sylius.search.orm.indexer" />
             <tag name="doctrine.event_listener" event="postFlush" />
@@ -83,9 +83,11 @@
             <tag name="doctrine.event_listener" event="preRemove" />
         </service>
 
+        <service id="sylius_search.accessor.product" class="Sylius\Bundle\SearchBundle\Accessor\ProductAccessor"/>
+
         <service id="sylius.search.orm.indexer" class="%sylius.search.orm.indexer.class%">
             <argument>%sylius_search.config%</argument>
-            <argument type="service" id="sylius.search.transformers.model.product" />
+            <argument type="service" id="sylius_search.accessor.product"/>
         </service>
 
         <service id="sylius.search.elasticsearch.indexer" class="%sylius.search.elasticsearch.indexer.class%">
@@ -112,9 +114,26 @@
             <tag name="twig.extension" />
         </service>
 
-        <service id="sylius_search.request_handler" class="%sylius.search.request_handler%" scope="request">
-            <argument type="service" id="request" />
+        <service id="sylius_search.request_handler" class="%sylius.search.request_handler%">
+            <argument type="service" id="request_stack" />
         </service>
+
+        <service id="sylius_search.grid.search_filter" class="%sylius_search.grid.search_filter.class%" >
+            <tag name="sylius.grid_filter" type="search" form-type="%sylius_search.grid.search_filter_type.class%"/>
+        </service>
+
+        <service id="sylius_search.grid.search_filter_type" class="%sylius_search.grid.search_filter_type.class%" >
+            <tag name="form.type"/>
+        </service>
+
+        <service id="sylius_search.search_query_builder.factory" class="%sylius_search.search_query_builder.factory.class%">
+            <argument id="sylius.repository.product" type="service"/>
+            <argument>%sylius_search.search_query_builder.factory.taxonMethod%</argument>
+            <argument>%sylius_search.search_query_builder.factory.searchMethod%</argument>
+            <argument id="sylius.context.channel" type="service"/>
+            <argument id="sylius.context.locale" type="service"/>
+        </service>
+
     </services>
 
 </container>

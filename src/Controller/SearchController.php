@@ -14,7 +14,6 @@ namespace Sylius\Bundle\SearchBundle\Controller;
 use FOS\RestBundle\View\View;
 use Sylius\Bundle\ResourceBundle\Controller\ResourceController;
 use Sylius\Bundle\SearchBundle\Query\SearchStringQuery;
-use Sylius\Component\Taxonomy\Model\TaxonInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -26,96 +25,45 @@ use Symfony\Component\HttpFoundation\Response;
 class SearchController extends ResourceController
 {
     /**
-     * Search landing page.
-     *
      * @param Request $request
      *
      * @return Response
      */
-    public function indexAction(Request $request)
+    public function filterAction(Request $request)
     {
         $configuration = $this->requestConfigurationFactory->create($this->metadata, $request);
 
-        /*
-         * when using elastic search if you want to setup multiple indexes and control
-         * them separately you can do so by adding the index service with a setter
-         *
-         * ->setTargetIndex($this->get('fos_elastica.index.my_own_index'))
-         *
-         * where my_own_index is the index name used in the configuration
-         * fos_elastica:
-         *      indexes:
-         *          my_own_index:
-         */
+        $facetGroup = $request->get('facet_group', 'all_set');
+        $taxonSlug = $request->get('slug');
+        $locale = $this->container->get('sylius.context.locale')->getLocaleCode();
+        $taxon = $taxonSlug ? $this->container->get('sylius.repository.taxon')->findOneBySlug($taxonSlug, $locale) : null;
+
         $finder = $this->container->get('sylius_search.finder')
             ->addTargetType('product')
-            ->setFacetGroup('search_set')
-            ->find(new SearchStringQuery(
+            ->setFacetGroup($facetGroup)
+            ->find(
+                new SearchStringQuery(
                     $request,
-                    $this->container->getParameter('sylius_search.pre_search_filter.enabled')
+                    $this->container->getParameter('sylius_search.pre_search_filter.enabled'),
+                    $taxon
                 )
             );
 
-        $paginator = $finder->getPaginator();
-
         $searchConfig = $this->container->getParameter('sylius_search.config');
 
-        if ($paginator) {
-            $paginator->setMaxPerPage($configuration->getPaginationMaxPerPage());
-            $paginator->setCurrentPage($this->container->get('sylius_search.request_handler')->getPage());
-        }
-
         $view = View::create()
-            ->setTemplate('SyliusSearchBundle::index.html.twig')
-            ->setData([
-                'results' => $paginator,
-                'facets' => $finder->getFacets(),
-                'facetTags' => $searchConfig['filters']['facets'],
-                'filters' => $finder->getFilters(),
-                'searchTerm' => $this->container->get('sylius_search.request_handler')->getQuery(),
-                'searchParam' => $this->container->get('sylius_search.request_handler')->getSearchParam(),
-                'requestMethod' => $this->container->getParameter('sylius_search.request.method'),
-            ])
-        ;
-
-        return $this->viewHandler->handle($configuration, $view);
-    }
-
-    /**
-     * @param Request $request
-     *
-     * @return Response
-     */
-    public function formAction(Request $request)
-    {
-        $configuration = $this->requestConfigurationFactory->create($this->metadata, $request);
-        $filters = [];
-
-        if ($this->container->getParameter('sylius_search.pre_search_filter.enabled')) {
-            $rootTaxon = $this->get('sylius.repository.taxon')->findOneBy([
-                'code' => $this->container->getParameter('sylius_search.pre_search_filter.taxon'),
-            ]);
-
-            $filters = [];
-            if ($rootTaxon) {
-                /** @var TaxonInterface $rootTaxon */
-                foreach ($rootTaxon->getChildren() as $taxon) {
-                    $filters[] = $taxon->getName();
-                }
-            }
-        }
-
-        $this->container->get('sylius_search.request_handler')->setRequest($request);
-
-        $view = View::create()
-            ->setTemplate($this->container->getParameter('sylius_search.search.template'))
-            ->setData([
-                'filters' => $filters,
-                'searchTerm' => $this->container->get('sylius_search.request_handler')->getQuery(),
-                'searchParam' => $this->container->get('sylius_search.request_handler')->getSearchParam(),
-                'requestMethod' => $this->container->getParameter('sylius_search.request.method'),
-            ])
-        ;
+            ->setTemplate('SyliusSearchBundle::filter_form.html.twig')
+            ->setData(
+                [
+                    'facets' => $finder->getFacets(),
+                    'facetTags' => $searchConfig['filters']['facets'],
+                    'filters' => $finder->getFilters(),
+                    'searchTerm' => $this->container->get('sylius_search.request_handler')->getQuery(),
+                    'searchParam' => $this->container->get('sylius_search.request_handler')->getSearchParam(),
+                    'requestUri' => null,
+                    'requestMethod' => $this->container->getParameter('sylius_search.request.method'),
+                ]
+            );
 
         return $this->viewHandler->handle($configuration, $view);
     }

@@ -12,6 +12,7 @@
 namespace Sylius\Bundle\SearchBundle\Finder;
 
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Query\Expr\Join;
 use Pagerfanta\Adapter\ArrayAdapter;
 use Pagerfanta\Pagerfanta;
 use Sylius\Bundle\SearchBundle\Doctrine\ORM\SearchIndexRepository;
@@ -19,8 +20,10 @@ use Sylius\Bundle\SearchBundle\Model\SearchIndex;
 use Sylius\Bundle\SearchBundle\Query\Query;
 use Sylius\Bundle\SearchBundle\Query\SearchStringQuery;
 use Sylius\Bundle\SearchBundle\Query\TaxonQuery;
+use Sylius\Bundle\SearchBundle\QueryBuilderFactory\QueryBuilderFactoryInterface;
 use Sylius\Bundle\SearchBundle\QueryLogger\QueryLoggerInterface;
 use Sylius\Component\Channel\Context\ChannelContextInterface;
+use Sylius\Component\Core\Model\TaxonInterface;
 
 /**
  * OrmFinder
@@ -34,14 +37,27 @@ class OrmFinder extends AbstractFinder
      */
     protected $em;
 
-    public function __construct(SearchIndexRepository $searchRepository, $config, $productRepository, EntityManager $em, QueryLoggerInterface $queryLogger, ChannelContextInterface $channelContext)
-    {
+    /**
+     * @var QueryBuilderFactoryInterface
+     */
+    private $queryBuilderFactory;
+
+    public function __construct(
+        SearchIndexRepository $searchRepository,
+        $config,
+        $productRepository,
+        EntityManager $em,
+        QueryLoggerInterface $queryLogger,
+        ChannelContextInterface $channelContext,
+        QueryBuilderFactoryInterface $queryBuilderFactory
+    ) {
         $this->searchRepository = $searchRepository;
         $this->config = $config;
         $this->productRepository = $productRepository;
         $this->em = $em;
         $this->queryLogger = $queryLogger;
         $this->channelContext = $channelContext;
+        $this->queryBuilderFactory = $queryBuilderFactory;
     }
 
     /**
@@ -142,22 +158,11 @@ class OrmFinder extends AbstractFinder
         $finalResults = $facets = [];
         $modelIdsForChannel = $this->searchRepository->getProductIdsFromChannel($this->channelContext->getChannel());
         // get ids and tags from full text search
-        foreach ($this->query($query->getSearchTerm(), $this->em) as $modelClass => $modelIdsToTags) {
+        foreach ($this->query($query->getSearchTerm(), $query->getTaxon()) as $modelClass => $modelIdsToTags) {
             $modelIds = array_keys($modelIdsToTags);
 
             if (isset($modelIdsForChannel[$modelClass])) {
                 $modelIds = array_intersect($modelIds, $modelIdsForChannel[$modelClass]);
-            }
-
-            //filter the ids if searchParam is not all
-            // TODO: Will refactor pre-search filtering into a service based on the finder configuration
-            if ($query->getSearchParam() != 'all' && $query->isDropdownFilterEnabled()) {
-                $preFilteredModelIds = $this->searchRepository->getProductIdsFromTaxonName($query->getSearchParam());
-                if (isset($preFilteredModelIds[$modelClass])) {
-                    $modelIds = array_intersect($modelIds, $preFilteredModelIds[$modelClass]);
-                } else {
-                    $modelIds = [];
-                }
             }
 
             $appliedFilters = $query->getAppliedFilters() ?: [];
@@ -271,6 +276,7 @@ class OrmFinder extends AbstractFinder
 
                 if (is_array($value)) {
                     foreach ($value as $v) {
+                        $v = (string)$v;
                         if (!isset($calculatedFacets[$name][$v])) {
                             $calculatedFacets[$name][$v] = ['key' => $v, 'doc_count' => 1];
                         } else {
@@ -320,6 +326,9 @@ class OrmFinder extends AbstractFinder
         $filtersForFacet = [];
 
         foreach ($filters as $filter) {
+            if (!is_array($filter)) {
+                continue;
+            }
             $filterName = key($filter);
 
             if ($facetName == preg_replace('/\d/', '', $filterName)) {
@@ -394,24 +403,40 @@ class OrmFinder extends AbstractFinder
     /**
      * The fulltext database query
      *
-     * @param string        $searchTerm
-     * @param EntityManager $em
+     * @param string         $searchTerm
+     * @param TaxonInterface $taxon
      *
      * @return array
      */
-    public function query($searchTerm, EntityManager $em)
+    public function query($searchTerm, TaxonInterface $taxon = null)
     {
-        $query = $em->createQuery('SELECT u.itemId, u.tags, u.entity FROM Sylius\Bundle\SearchBundle\Model\SearchIndex u WHERE MATCH(u.value) AGAINST (:searchTerm BOOLEAN) > 0');
-        $query->setParameter('searchTerm', $searchTerm);
+        $builder = $this->queryBuilderFactory->create($taxon);
+        $builder->innerJoin(
+            SearchIndex::class,
+            'u',
+            Join::WITH,
+            $builder->expr()->eq('o.id', 'u.itemId')
+        );
+
+        $builder->select(['u.itemId', 'u.tags', 'u.entity']);
+
+        if ($searchTerm) {
+            $conditions = [];
+            foreach (['translation.name', 'translation.description', 'taxonTranslation.name'] as $field) {
+                $conditions[] = $builder->expr()->like($field, ':searchTerm');
+            }
+            $builder->andWhere($builder->expr()->orX(...$conditions));
+            $builder->setParameter('searchTerm', '%' . $searchTerm . '%');
+        }
+
+        if ($taxon) {
+            $builder->andWhere($builder->expr()->eq('taxon.code', ':taxon'));
+            $builder->setParameter('taxon', $taxon->getCode());
+        }
 
         $elements = [];
-        foreach ($query->getResult() as $result) {
-            foreach ($this->targetTypes as $type) {
-                if ($result['entity'] != $this->config['orm_indexes'][$type]['class']) {
-                    continue;
-                }
-            }
 
+        foreach ($builder->getQuery()->getResult() as $result) {
             $elements[$result['entity']][$result['itemId']] = $result['tags'];
         }
 

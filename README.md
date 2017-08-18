@@ -161,7 +161,10 @@ fos_elastica:
 ### Filters
 
 ```yaml
-filters:
+sylius_search:
+    filters:
+        driver: orm
+        engine: orm # other option: elasticsearch
         search_filter: # the small drop down menu on the side of the search field
             enabled: true
             taxon: category # possible values are taxons codes (category, brand for sylius)

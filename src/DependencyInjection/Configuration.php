@@ -11,7 +11,10 @@
 
 namespace Sylius\Bundle\SearchBundle\DependencyInjection;
 
+use Sylius\Bundle\ResourceBundle\SyliusResourceBundle;
 use Sylius\Bundle\SearchBundle\Controller\SearchController;
+use Sylius\Bundle\SearchBundle\Form\Type\LogType;
+use Sylius\Bundle\SearchBundle\Form\Type\SearchType;
 use Sylius\Bundle\SearchBundle\Model\SearchIndex;
 use Sylius\Bundle\SearchBundle\Model\SearchIndexInterface;
 use Sylius\Bundle\SearchBundle\Model\SearchLog;
@@ -110,6 +113,8 @@ class Configuration implements ConfigurationInterface
                                     ->scalarNode('display_name')->end()
                                     ->scalarNode('type')->end()
                                     ->scalarNode('value')->end()
+                                    ->scalarNode('taxon_root')->defaultNull()->end()
+                                    ->booleanNode('taxon_leaf_only')->defaultTrue()->end()
                                     ->arrayNode('values')
                                         ->performNoDeepMerging()
                                         ->prototype('array')
@@ -136,10 +141,11 @@ class Configuration implements ConfigurationInterface
         $node
             ->children()
                 ->scalarNode('driver')
-                    ->info('Defaults to the first client defined')
+                    ->defaultValue(SyliusResourceBundle::DRIVER_DOCTRINE_ORM)
                 ->end()
                 ->scalarNode('engine')
-                    ->info('Defaults to the first client defined')
+                    ->info("Possible values: 'orm' or 'elasticsearch'")
+                    ->defaultValue('orm')
                 ->end()
                 ->variableNode('request_method')->defaultValue('GET')->end()
             ->end()
@@ -220,12 +226,12 @@ class Configuration implements ConfigurationInterface
                                 ->arrayNode('classes')
                                     ->addDefaultsIfNotSet()
                                     ->children()
-                                        ->scalarNode('driver')->defaultValue('doctrine/orm')->cannotBeEmpty()->end()
                                         ->scalarNode('model')->defaultValue(SearchIndex::class)->cannotBeEmpty()->end()
                                         ->scalarNode('interface')->defaultValue(SearchIndexInterface::class)->cannotBeEmpty()->end()
                                         ->scalarNode('controller')->defaultValue(SearchController::class)->cannotBeEmpty()->end()
                                         ->scalarNode('repository')->cannotBeEmpty()->end()
                                         ->scalarNode('factory')->defaultValue(Factory::class)->end()
+                                        ->scalarNode('form')->defaultValue(SearchType::class)->cannotBeEmpty()->end()
                                     ->end()
                                 ->end()
                             ->end()
@@ -237,12 +243,12 @@ class Configuration implements ConfigurationInterface
                                 ->arrayNode('classes')
                                     ->addDefaultsIfNotSet()
                                     ->children()
-                                        ->scalarNode('driver')->defaultValue('doctrine/orm')->cannotBeEmpty()->end()
                                         ->scalarNode('model')->defaultValue(SearchLog::class)->cannotBeEmpty()->end()
                                         ->scalarNode('interface')->defaultValue(SearchLogInterface::class)->cannotBeEmpty()->end()
                                         ->scalarNode('controller')->defaultValue(SearchController::class)->cannotBeEmpty()->end()
                                         ->scalarNode('repository')->cannotBeEmpty()->end()
                                         ->scalarNode('factory')->defaultValue(Factory::class)->end()
+                                        ->scalarNode('form')->defaultValue(LogType::class)->cannotBeEmpty()->end()
                                     ->end()
                                 ->end()
                             ->end()

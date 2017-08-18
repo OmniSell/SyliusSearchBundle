@@ -31,12 +31,4 @@ class SearchElementExtension extends \Twig_Extension
             }),
         ];
     }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function getName()
-    {
-        return 'search_element_extension';
-    }
 }

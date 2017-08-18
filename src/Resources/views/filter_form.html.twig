@@ -1,10 +1,12 @@
+{% import "@SyliusShop/Common/Macro/money.html.twig" as money %}
+
 {#This form has no form type. I could use a form type but there is no data binding with a model#}
 {#and also I don't currently need any validation.#}
 
 {#For a future release I could move it to a form type if there is a good reason for it.#}
 
 {% if facets is defined and facets is not null %}
-    <form id="filter-form" action="{{ app.request.requestUri }}" method="{{ requestMethod }}">
+    <form id="filter-form" action="{{ requestUri }}" method="{{ requestMethod }}">
         {% for name, facet in facets %}
             {% if facet is not empty %}
             {{ facetTags[name]['display_name'] }}
@@ -23,11 +25,11 @@
                                     {% endif %}
                                     id="{{ name ~ '-' ~ loop.index0 }}"
                                     type="checkbox"
-                                    name="filters[][{{ name }}]"
+                                    name="criteria[{{ name }}][]"
                                     value="{{ element['min'] is defined? element['min']:element['from'] }}|{{ element['max'] is defined? element['max']:element['to'] }}" />
-                            {{ element['min'] is defined? element['min']|sylius_price:element['from']|sylius_price }}
+                            {{ element['min'] is defined? money.format(element['min']):money.format(element['from']) }}
                             to
-                            {{ element['max'] is defined? element['max']|sylius_price:element['to']|sylius_price }} ({{ element['doc_count'] }})
+                            {{ element['max'] is defined? money.format(element['max']):money.format(element['to']) }} ({{ element['doc_count'] }})
                             </label>
                         </li>
                     {% else %}
@@ -41,7 +43,7 @@
                                             {% endif %}
                                         {% endfor %}
                                     {% endif %}
-                                    type="checkbox" name="filters[][{{ name }}]" value="{{ element['key'] }}"> {{ (':' in element['key'])? element['key']|split(':')[1]:element['key'] }} ({{ element['doc_count'] }})
+                                    type="checkbox" name="criteria[{{ name }}][]" value="{{ element['key'] }}"> {{ (':' in element['key'])? element['key']|split(':')[1]:element['key'] }} ({{ element['doc_count'] }})
                             </label>
                         </li>
                     {% endif %}
@@ -49,8 +51,9 @@
             </ul>
                 {% endif %}
         {% endfor %}
-        <input type="hidden" name="q" value="{{ searchTerm }}"/>
-        <input type="hidden" name="search_param" value="{{ searchParam }}"/>
+        {% if searchTerm %}
+            <input type="hidden" name="criteria[search]" value="{{ searchTerm }}"/>
+        {% endif %}
         <input type="submit" value="Filter" class="btn btn-info"/>
     </form>
     <br>

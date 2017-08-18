@@ -12,7 +12,7 @@
 namespace Sylius\Bundle\SearchBundle\Request;
 
 use Symfony\Component\HttpFoundation\ParameterBag;
-use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
  * Request handling
@@ -24,22 +24,24 @@ class RequestHandler
     /**
      * @var ParameterBag
      */
-    private $request;
+    private $requestStack;
 
     /**
-     * @param Request $request
+     * @param RequestStack $requestStack
      */
-    public function __construct(Request $request)
+    public function __construct(RequestStack $requestStack)
     {
-        $this->request = $request->isMethod('GET') ? $request->query : $request->request;
+        $this->requestStack = $requestStack;
     }
 
     /**
-     * @param Request $request
+     * @return ParameterBag
      */
-    public function setRequest(Request $request)
+    private function getRequest()
     {
-        $this->request = $request->isMethod('GET') ? $request->query : $request->request;
+        $current = $this->requestStack->getCurrentRequest();
+
+        return $current->isMethod('GET') ? $current->query : $current->request;
     }
 
     /**
@@ -47,7 +49,7 @@ class RequestHandler
      */
     public function getPage()
     {
-        return $this->request->get('page', 1);
+        return $this->getRequest()->get('page', 1);
     }
 
     /**
@@ -55,7 +57,9 @@ class RequestHandler
      */
     public function getQuery()
     {
-        return $this->request->get('q');
+        $criteria = $this->getRequest()->get('criteria', []);
+
+        return isset($criteria['search']) ? $criteria['search'] : null;
     }
 
     /**
@@ -63,6 +67,6 @@ class RequestHandler
      */
     public function getSearchParam()
     {
-        return $this->request->get('search_param');
+        return $this->getRequest()->get('search_param');
     }
 }

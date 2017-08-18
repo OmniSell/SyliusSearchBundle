@@ -55,10 +55,14 @@ class SearchIndexRepository extends EntityRepository
         $queryBuilder
             ->select('product')
             ->from($productClassName, 'product')
-            ->leftJoin('product.taxons', 'taxon')
-            ->where('taxon.name = :taxonName')
-            ->setParameter('taxonName', $taxonName)
         ;
+
+        if ($taxonName) {
+            $queryBuilder
+                ->leftJoin('product.taxons', 'taxon')
+                ->where('taxon.code = :taxonName')
+                ->setParameter('taxonName', $taxonName);
+        }
 
         $filteredIds = [];
         foreach ($queryBuilder->getQuery()->getArrayResult() as $product) {
